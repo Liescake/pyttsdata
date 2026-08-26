@@ -1,0 +1,14 @@
+{
+    "whisperx": {
+        "model": "base",
+        "targets": [],
+        "deepth": 1,
+        "compute_type": "float16",
+        "batch_size": 16,
+        "device": "cuda",
+        "download_root": "models",
+        "default_extensions": [".mp3", ".mp4", ".wav", ".ogg", ".flac"],
+        "default_target": "./audios"
+    },
+    "ffmpeg": {}
+}

@@ -2,6 +2,8 @@ import json
 import os
 from pathlib import Path
 from typing import Any, List, Dict
+from typing import Optional
+
 
 def load_config(flag=4):
     # File mode
@@ -21,7 +23,7 @@ def load_config(flag=4):
     else:
         raise Exception("UnknownTaskType")
 
-def locate_audio(deepth=1, targets: List = None, extensions=None):
+def locate_audio(targets: Optional[List] = None, extensions=None):
     # 为了适配后续终端操作，所以targets作为参数传入
     settings = config["whisperx"]
     if targets is None:
@@ -53,7 +55,7 @@ def locate_audio(deepth=1, targets: List = None, extensions=None):
 
     return result
 
-def transcribe(conf=None, audios: List[Path] = None):
+def transcribe(conf=None, audios: Optional[List[Path]] = None):
     import copy
     if conf is None:
         load_config()
@@ -69,7 +71,7 @@ def transcribe(conf=None, audios: List[Path] = None):
         compute_type=settings["compute_type"],
         download_root=settings["download_root"],
     )
-    results = []
+    results = {}
     for audio_path in audios:
         audio = whisperx.load_audio(str(Path(audio_path).resolve()))
         result = model.transcribe(audio, batch_size=settings["batch_size"])
@@ -85,13 +87,78 @@ def transcribe(conf=None, audios: List[Path] = None):
             settings["device"],
             return_char_alignments=False,
         )
-        results.append(result)
-        print(results)
-
+        for segment in result.get("segments", []):
+            segment.pop("words", None)
+            segment.pop("avg_logprob", None)
+        result.pop("word_segments", None)
+        
+        results[audio_path] = result.get("segments", [])
+        
+    print(results)
     return results
         
+def timestamp_convert(input: Dict[Path, List[Dict[str, Any]]]):
+    def format_timestamp(seconds: Any) -> str:
+        total_seconds = int(float(seconds))
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+    for segments in input.values():
+        for segment in segments:
+            segment["start"] = format_timestamp(segment["start"])
+            segment["end"] = format_timestamp(segment["end"])
+
+    return input
+
+    
+
+def split(targets: Dict[Path, List[Dict[str, Any]]], conf: Any = None):
+    import ffmpeg
+
+    t = {
+        "audio": "",
+        "text": "",
+        "ref_audio": ""
+    }
+
+    task_sequence = []
+    counter = 0
+    
+    if conf == None: conf = config
+    output_dir = Path(conf["ffmpeg"]["opt_file"])
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    with open(output_dir.parent / "train_raw.txt", "a", encoding="utf-8") as f:
+            
+        for a, l in targets.items():
+            for i in l:
+                print(i)
+                
+                output_path = output_dir / f"{counter}.wav" if counter != 0 else output_dir / f"ref_audio.wav"
+                task_sequence.append(
+                    ffmpeg.input(str(a))
+                    .audio
+                    .filter("atrim", start=i["start"], end=i["end"])
+                    .filter("asetpts", "PTS-STARTPTS")
+                    .output(str(output_path), format="wav", acodec="pcm_s16le")
+                )
+                
+                t["audio"] = str(output_path)
+                t["text"] = i["text"]
+                t["ref_audio"] = str(output_path)
+                
+                f.write(json.dumps(t))
+                f.write("\n")
+
+                counter += 1
+                
+    for task in task_sequence:
+        task.run(overwrite_output=True)
+
+    
 if __name__ == "__main__":
     load_config()
     audios = locate_audio()
     if audios:
-        transcribe(audios=audios)
+        split(transcribe(audios=audios))

@@ -10,5 +10,7 @@
         "default_extensions": [".mp3", ".mp4", ".wav", ".ogg", ".flac"],
         "default_target": "./audios"
     },
-    "ffmpeg": {}
+    "ffmpeg": {
+        "opt_file": "./output/data/"
+    }
 }

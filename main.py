@@ -129,26 +129,29 @@ def split(targets: Dict[Path, List[Dict[str, Any]]], conf: Any = None):
     output_dir = Path(conf["ffmpeg"]["opt_file"])
     output_dir.mkdir(parents=True, exist_ok=True)
     
+    # TODO: 添加短音频去除功能(<1s)
+    
     with open(output_dir.parent / "train_raw.txt", "a", encoding="utf-8") as f:
             
         for a, l in targets.items():
             for i in l:
                 print(i)
                 
-                output_path = output_dir / f"{counter}.wav" if counter != 0 else output_dir / f"ref_audio.wav"
+                output_path = output_dir / f"{counter}.wav" if counter != 0 else output_dir / "ref_audio.wav"
+                
                 task_sequence.append(
                     ffmpeg.input(str(a))
                     .audio
                     .filter("atrim", start=i["start"], end=i["end"])
                     .filter("asetpts", "PTS-STARTPTS")
-                    .output(str(output_path), format="wav", acodec="pcm_s16le")
+                    .output(str(output_path), format="wav", acodec="pcm_s16le", ar=24000, ac=1)
                 )
                 
                 t["audio"] = str(output_path)
                 t["text"] = i["text"]
-                t["ref_audio"] = str(output_path)
+                t["ref_audio"] = str(output_dir / "ref_audio.wav")
                 
-                f.write(json.dumps(t))
+                f.write(json.dumps(t, ensure_ascii=False))
                 f.write("\n")
 
                 counter += 1

@@ -97,21 +97,26 @@ def transcribe(conf=None, audios: Optional[List[Path]] = None):
     print(results)
     return results
         
-def timestamp_convert(input: Dict[Path, List[Dict[str, Any]]]):
+def timestamp_convert(input: Dict[Path, List[Dict[str, Any]]], end_pad: float = 0.2):
     def format_timestamp(seconds: Any) -> str:
-        total_seconds = int(float(seconds))
-        hours, remainder = divmod(total_seconds, 3600)
-        minutes, seconds = divmod(remainder, 60)
-        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+        ms = int(round(float(seconds) * 1000))
+        hours, ms = divmod(ms, 3_600_000)
+        minutes, ms = divmod(ms, 60_000)
+        sec, ms = divmod(ms, 1000)
+        return f"{hours:02d}:{minutes:02d}:{sec:02d}.{ms:03d}"
 
     for segments in input.values():
         for segment in segments:
             segment["start"] = format_timestamp(segment["start"])
-            segment["end"] = format_timestamp(segment["end"])
+            segment["end"] = format_timestamp(segment["end"] + end_pad)
 
     return input
 
-    
+def short_del(targets: Dict[Path, List[Dict[str, Any]]], limit = 0.5): 
+    for p, i in targets.items():
+        targets[p] = [j for j in i if j["end"] - j["start"] > limit]
+    return targets
+                
 
 def split(targets: Dict[Path, List[Dict[str, Any]]], conf: Any = None):
     import ffmpeg
@@ -128,8 +133,6 @@ def split(targets: Dict[Path, List[Dict[str, Any]]], conf: Any = None):
     if conf == None: conf = config
     output_dir = Path(conf["ffmpeg"]["opt_file"])
     output_dir.mkdir(parents=True, exist_ok=True)
-    
-    # TODO: 添加短音频去除功能(<1s)
     
     with open(output_dir.parent / "train_raw.txt", "a", encoding="utf-8") as f:
             
@@ -164,4 +167,6 @@ if __name__ == "__main__":
     load_config()
     audios = locate_audio()
     if audios:
-        split(transcribe(audios=audios))
+        result = transcribe(audios=audios)
+        result = timestamp_convert(result, end_pad=float(config["ffmpeg"]["end_pad"]))
+        split(result)

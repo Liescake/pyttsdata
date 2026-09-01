@@ -168,5 +168,6 @@ if __name__ == "__main__":
     audios = locate_audio()
     if audios:
         result = transcribe(audios=audios)
+        result = short_del(result, limit=float(config["ffmpeg"].get("min_dur", 0.5)))
         result = timestamp_convert(result, end_pad=float(config["ffmpeg"]["end_pad"]))
         split(result)
